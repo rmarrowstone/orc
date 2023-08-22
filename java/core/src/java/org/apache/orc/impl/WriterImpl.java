@@ -42,11 +42,7 @@ import org.apache.orc.PhysicalWriter;
 import org.apache.orc.StripeInformation;
 import org.apache.orc.StripeStatistics;
 import org.apache.orc.TypeDescription;
-import org.apache.orc.impl.writer.StreamOptions;
-import org.apache.orc.impl.writer.TreeWriter;
-import org.apache.orc.impl.writer.WriterContext;
-import org.apache.orc.impl.writer.WriterEncryptionKey;
-import org.apache.orc.impl.writer.WriterEncryptionVariant;
+import org.apache.orc.impl.writer.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -658,7 +654,9 @@ public class WriterImpl implements WriterInternal, MemoryManager.Callback {
     builder.setRowIndexStride(rowIndexStride);
     rawDataSize = computeRawDataSize();
     // serialize the types
-    writeTypes(builder, schema);
+    writeTypes(builder, //schema.getCategory() == TypeDescription.Category.DATAGRAM
+            //? schema.getChildren().get(0)
+            schema);
     builder.setCalendar(useProlepticGregorian
                               ? OrcProto.CalendarKind.PROLEPTIC_GREGORIAN
                               : OrcProto.CalendarKind.JULIAN_GREGORIAN);

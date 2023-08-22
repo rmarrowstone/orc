@@ -153,10 +153,10 @@ public class PhysicalFsWriter implements PhysicalWriter {
     protected final OrcProto.ColumnStatistics[] fileStats;
 
     VariantTracker(TypeDescription schema, StreamOptions options) {
-      rootColumn = schema.getId();
+      rootColumn = schema.getId() == -1 ? 0 : schema.getId();
       lastColumn = schema.getMaximumId();
       this.options = options;
-      stripeStats = new List[schema.getMaximumId() - schema.getId() + 1];
+      stripeStats = new List[schema.getMaximumId() - rootColumn + 1];
       for(int i=0; i < stripeStats.length; ++i) {
         stripeStats[i] = new ArrayList<>();
       }

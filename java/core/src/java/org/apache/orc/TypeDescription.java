@@ -18,7 +18,9 @@
 
 package org.apache.orc;
 
+import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.orc.impl.LatticeRowBatch;
 import org.apache.orc.impl.ParserUtils;
 import org.apache.orc.impl.TypeUtils;
 import org.jetbrains.annotations.NotNull;
@@ -116,6 +118,7 @@ public class TypeDescription
     MAP("map", false),
     STRUCT("struct", false),
     UNION("uniontype", false),
+    DATAGRAM("datagram", false),
     TIMESTAMP_INSTANT("timestamp with local time zone", true);
 
     Category(String name, boolean isPrimitive) {
@@ -312,6 +315,10 @@ public class TypeDescription
     return new TypeDescription(Category.STRUCT);
   }
 
+  public static TypeDescription createDatagram() {
+    return new TypeDescription(Category.DATAGRAM);
+  }
+
   /**
    * Add a child to a union type.
    * @param child a new child type to add
@@ -350,14 +357,44 @@ public class TypeDescription
    */
   public int getId() {
     // if the id hasn't been assigned, assign all of the ids from the root
+    if (id == -2) {
+      assignIdsFromRoot();
+    }
     if (id == -1) {
-      TypeDescription root = this;
-      while (root.parent != null) {
-        root = root.parent;
-      }
-      root.assignIds(0);
+      // todo: this is just for an easy breakpoint.
+      return id;
     }
     return id;
+  }
+
+
+  /**
+   * Get the maximum id assigned to this type or its children.
+   * The first call will cause all of the the ids in tree to be assigned, so
+   * it should not be called before the type is completely built.
+   * @return the maximum id assigned under this type
+   */
+  public int getMaximumId() {
+    // if the id hasn't been assigned, assign all the ids from the root
+    if (maxId == -2) {
+      assignIdsFromRoot();
+    }
+    return maxId;
+  }
+
+  private void assignIdsFromRoot() {
+    TypeDescription root = this;
+    while (root.parent != null) {
+      root = root.parent;
+    }
+    //if (root.category == Category.DATAGRAM) {
+    //  // todo: this is a hack that avoids makes the datagram act like the logical root
+    //  root.assignIds(-1);
+    //  root.id = 0;
+    //} else {
+    //  root.assignIds(0);
+    //}
+    root.assignIds(root.category == Category.DATAGRAM ? -1 : 0);
   }
 
   @Override
@@ -458,24 +495,6 @@ public class TypeDescription
   }
 
   /**
-   * Get the maximum id assigned to this type or its children.
-   * The first call will cause all of the the ids in tree to be assigned, so
-   * it should not be called before the type is completely built.
-   * @return the maximum id assigned under this type
-   */
-  public int getMaximumId() {
-    // if the id hasn't been assigned, assign all of the ids from the root
-    if (maxId == -1) {
-      TypeDescription root = this;
-      while (root.parent != null) {
-        root = root.parent;
-      }
-      root.assignIds(0);
-    }
-    return maxId;
-  }
-
-  /**
    * Specify the version of the VectorizedRowBatch that the user desires.
    */
   public enum RowBatchVersion {
@@ -493,6 +512,22 @@ public class TypeDescription
     } else {
       result = new VectorizedRowBatch(1, size);
       result.cols[0] = TypeUtils.createColumn(this, version, size);
+    }
+    result.reset();
+    return result;
+  }
+
+  public LatticeRowBatch createRowBatchWithLatticeBuffers(RowBatchVersion version, int size, int bufferDefaultSize) {
+    LatticeRowBatch result;
+    TypeDescription root = children.get(0);
+    if (root.category == Category.STRUCT) {
+      result = new LatticeRowBatch(root.children.size(), size, bufferDefaultSize);
+      for(int i=0; i < result.cols.length; ++i) {
+        result.cols[i] = TypeUtils.createColumn(root.children.get(i), version, size);
+      }
+    } else {
+      result = new LatticeRowBatch(1, size, bufferDefaultSize);
+      result.cols[0] = TypeUtils.createColumn(root, version, size);
     }
     result.reset();
     return result;
@@ -524,6 +559,11 @@ public class TypeDescription
   public VectorizedRowBatch createRowBatch() {
     return createRowBatch(RowBatchVersion.ORIGINAL,
         VectorizedRowBatch.DEFAULT_SIZE);
+  }
+
+  public LatticeRowBatch createRowBatchWithLatticeBuffers(int bufferSize) {
+    return createRowBatchWithLatticeBuffers(RowBatchVersion.ORIGINAL,
+            VectorizedRowBatch.DEFAULT_SIZE, bufferSize);
   }
 
   /**
@@ -617,6 +657,11 @@ public class TypeDescription
     return startId;
   }
 
+  public TypeDescription withChild(TypeDescription child) {
+    addChild(child);
+    return this;
+  }
+
   /**
    * Add a child to a type.
    * @param child the child to add
@@ -632,6 +677,7 @@ public class TypeDescription
           throw new IllegalArgumentException("Can't add more children to map");
         }
       case UNION:
+      case DATAGRAM:
       case STRUCT:
         children.add(child);
         child.parent = this;
@@ -655,8 +701,8 @@ public class TypeDescription
     }
   }
 
-  private int id = -1;
-  private int maxId = -1;
+  private int id = -2;
+  private int maxId = -2;
   private TypeDescription parent;
   private final Category category;
   private final List<TypeDescription> children;
@@ -693,6 +739,7 @@ public class TypeDescription
         buffer.append(')');
         break;
       case LIST:
+      case DATAGRAM:
       case MAP:
       case UNION:
         buffer.append('<');

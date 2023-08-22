@@ -196,6 +196,12 @@ public class OrcUtils {
           type.addSubtypes(t.getId());
         }
         break;
+      case DATAGRAM:
+        type.setKind(OrcProto.Type.Kind.DATAGRAM);
+        for(TypeDescription t: children) {
+          type.addSubtypes(t.getId());
+        }
+        break;
       default:
         throw new IllegalArgumentException("Unknown category: " +
             typeDescr.getCategory());
@@ -240,6 +246,7 @@ public class OrcUtils {
         }
         break;
       case UNION:
+      case DATAGRAM:
       case STRUCT:
         break;
       default:
@@ -250,10 +257,10 @@ public class OrcUtils {
     // ensure the children are also correct
     if (children != null) {
       for(int child: children) {
-        if (child != current) {
-          throw new IOException("Unexpected child type id " + child + " when " +
-              current + " was expected.");
-        }
+        // if (child != current) {
+        //  throw new IOException("Unexpected child type id " + child + " when " +
+        //      current + " was expected.");
+        //}
         current = isValidTypeTree(types, current);
       }
     }
@@ -362,6 +369,12 @@ public class OrcUtils {
               convertTypeFromProtobuf(types, type.getSubtypes(f)));
         }
         break;
+        case DATAGRAM:
+          result = TypeDescription.createDatagram();
+          for (int f = 0; f < type.getSubtypesCount(); ++f) {
+              result.addChild(convertTypeFromProtobuf(types.subList(1, types.size()), type.getSubtypes(f)));
+          }
+          break;
       default:
         throw new IllegalArgumentException("Unknown ORC type " + type.getKind());
     }

@@ -235,6 +235,8 @@ public class RecordReaderImpl implements RecordReader {
         OrcConf.IGNORE_NON_UTF8_BLOOM_FILTERS.getBoolean(fileReader.conf);
     ReaderEncryption encryption = fileReader.getEncryption();
     this.fileIncluded = evolution.getFileIncluded();
+
+
     SearchArgument sarg = options.getSearchArgument();
     boolean[] rowIndexCols = new boolean[evolution.getFileIncluded().length];
     if (sarg != null && rowIndexStride > 0) {
@@ -353,7 +355,6 @@ public class RecordReaderImpl implements RecordReader {
           .setEncryption(encryption);
     reader = TreeReaderFactory.createRootReader(evolution.getReaderSchema(), readerContext);
     skipBloomFilters = hasBadBloomFilters(fileReader.getFileTail().getFooter());
-
     int columns = evolution.getFileSchema().getMaximumId() + 1;
     indexes = new OrcIndex(new OrcProto.RowIndex[columns],
         new OrcProto.Stream.Kind[columns],

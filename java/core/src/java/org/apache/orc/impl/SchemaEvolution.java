@@ -316,7 +316,9 @@ public class SchemaEvolution {
 
     boolean[] result = new boolean[fileSchema.getMaximumId() + 1];
     boolean safePpd = validatePPDConversion(fileSchema, readerSchema);
-    result[fileSchema.getId()] = safePpd;
+    if (fileSchema.getId() != -1) {
+        result[fileSchema.getId()] = safePpd;
+    }
     return populatePpdSafeConversionForChildren(result,
         readerSchema.getChildren());
   }
@@ -485,6 +487,7 @@ public class SchemaEvolution {
           break;
         case UNION:
         case MAP:
+        case DATAGRAM:
         case LIST: {
           // these must be an exact match
           List<TypeDescription> fileChildren = fileType.getChildren();
@@ -559,6 +562,10 @@ public class SchemaEvolution {
       }
     }
     if (isOk) {
+      if (readerType.getId() == -1 || fileType.getId() == -1) {
+        return;
+      }
+
       readerFileTypes[readerType.getId()] = fileType;
       fileIncluded[fileType.getId()] = true;
     } else {

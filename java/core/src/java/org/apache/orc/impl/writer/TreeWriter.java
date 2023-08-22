@@ -123,6 +123,10 @@ public interface TreeWriter {
     public static TreeWriter create(TypeDescription schema,
                                     WriterEncryptionVariant encryption,
                                     WriterContext streamFactory) throws IOException {
+      if (schema.getCategory() == TypeDescription.Category.DATAGRAM) {
+        return new LatticeBatchWriter(schema, encryption, streamFactory);
+      }
+
       if (encryption == null) {
         // If we are the root of an encryption variant, create a special writer.
         encryption = streamFactory.getEncryption(schema.getId());
@@ -185,6 +189,8 @@ public interface TreeWriter {
           return new ListTreeWriter(schema, encryption, streamFactory);
         case UNION:
           return new UnionTreeWriter(schema, encryption, streamFactory);
+        // case DATAGRAM:
+         // return new LatticeBatchWriter(schema, encryption, streamFactory);
         default:
           throw new IllegalArgumentException("Bad category: " +
                                                schema.getCategory());

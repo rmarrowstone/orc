@@ -43,16 +43,7 @@ import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.orc.OrcFile.Version;
 import org.apache.orc.OrcFile.WriterOptions;
-import org.apache.orc.impl.DataReaderProperties;
-import org.apache.orc.impl.InStream;
-import org.apache.orc.impl.KeyProvider;
-import org.apache.orc.impl.MemoryManagerImpl;
-import org.apache.orc.impl.OrcCodecPool;
-import org.apache.orc.impl.OrcIndex;
-import org.apache.orc.impl.ReaderImpl;
-import org.apache.orc.impl.RecordReaderImpl;
-import org.apache.orc.impl.RecordReaderUtils;
-import org.apache.orc.impl.WriterImpl;
+import org.apache.orc.impl.*;
 import org.apache.orc.impl.reader.ReaderEncryption;
 import org.apache.orc.impl.reader.StripePlanner;
 import org.junit.jupiter.api.BeforeEach;
@@ -3281,9 +3272,17 @@ public class TestVectorOrcFile {
     TypeDescription schema = TypeDescription.createStruct()
         .addField("struct", TypeDescription.createStruct()
             .addField("inner", TypeDescription.createLong()));
+
+    schema = TypeDescription.createDatagram()
+            .withChild(schema)
+            .withChild(TypeDescription.createInt())
+            .withChild(TypeDescription.createString());
+
     Writer writer = OrcFile.createWriter(testFilePath,
-        OrcFile.writerOptions(conf).setSchema(schema).version(fileFormat));
-    VectorizedRowBatch batch = schema.createRowBatch();
+        OrcFile.writerOptions(conf)
+                .setSchema(schema)
+                .version(fileFormat));
+    LatticeRowBatch batch = schema.createRowBatchWithLatticeBuffers(32);
     batch.size = 1024;
     StructColumnVector outer = (StructColumnVector) batch.cols[0];
     outer.noNulls = false;
@@ -3293,15 +3292,24 @@ public class TestVectorOrcFile {
       }
       ((LongColumnVector) outer.fields[0]).vector[r] = r;
     }
+    batch.intBuffer.noNulls = true;
+    batch.intBuffer.vector[0] = 32;
+
+    batch.textBuffer.noNulls = true;
+    batch.textBuffer.initBuffer();
+    batch.textBuffer.setVal(0, "foo".getBytes(StandardCharsets.UTF_8));
+
     writer.addRowBatch(batch);
     writer.close();
+
     Reader reader = OrcFile.createReader(testFilePath,
         OrcFile.readerOptions(conf));
     RecordReader rows = reader.rows();
-    batch = reader.getSchema().createRowBatch();
-    rows.nextBatch(batch);
-    assertEquals(1024, batch.size);
-    StructColumnVector inner = (StructColumnVector) batch.cols[0];
+    // TODO: read lattice batch back
+    LatticeRowBatch readBatch = schema.createRowBatchWithLatticeBuffers(32);
+    rows.nextBatch(readBatch);
+    assertEquals(1024, readBatch.size);
+    StructColumnVector inner = (StructColumnVector) readBatch.cols[0];
     LongColumnVector vec = (LongColumnVector) inner.fields[0];
     for(int r=0; r < 1024; ++r) {
       if (r < 200 || (r >= 400 && r < 600) || r >= 800) {
@@ -3311,8 +3319,11 @@ public class TestVectorOrcFile {
         assertEquals(r, vec.vector[r], "row " + r);
       }
     }
-    rows.nextBatch(batch);
-    assertEquals(0, batch.size);
+    assertEquals(32, readBatch.intBuffer.vector[0]);
+    assertEquals("foo", new String(readBatch.textBuffer.vector[0]));
+
+    rows.nextBatch(readBatch);
+    assertEquals(0, readBatch.size);
   }
 
   /**
@@ -3543,6 +3554,12 @@ public class TestVectorOrcFile {
     }
     rows.nextBatch(batch);
     assertEquals(0, batch.size);
+  }
+
+  @ParameterizedTest
+  @MethodSource("data")
+  public void testLatticeVectorizedRowBatch(Version fileFormat) throws Exception {
+
   }
 
   @ParameterizedTest

@@ -41,10 +41,7 @@ import org.apache.orc.OrcProto;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.impl.reader.ReaderEncryption;
 import org.apache.orc.impl.reader.StripePlanner;
-import org.apache.orc.impl.reader.tree.BatchReader;
-import org.apache.orc.impl.reader.tree.PrimitiveBatchReader;
-import org.apache.orc.impl.reader.tree.StructBatchReader;
-import org.apache.orc.impl.reader.tree.TypeReader;
+import org.apache.orc.impl.reader.tree.*;
 import org.apache.orc.impl.writer.TimestampTreeWriter;
 import org.jetbrains.annotations.NotNull;
 
@@ -98,6 +95,7 @@ public class TreeReaderFactory {
     private ReaderEncryption encryption;
     private boolean useProlepticGregorian;
     private boolean fileUsedProlepticGregorian;
+
     private Set<Integer> filterColumnIds = Collections.emptySet();
     Consumer<OrcFilterContext> filterCallback;
 
@@ -3057,6 +3055,16 @@ public class TreeReaderFactory {
 
   public static BatchReader createRootReader(TypeDescription readerType, Context context)
           throws IOException {
+    if (readerType.getCategory() == TypeDescription.Category.DATAGRAM) {
+      return new LatticeBatchReader(
+              createRootReader(readerType.getChildren().get(0), context),
+              new TypeReader[]{
+                      createTreeReader(readerType.getChildren().get(1), context),
+                      createTreeReader(readerType.getChildren().get(2), context)
+              },
+              context);
+    }
+
     TypeReader reader = createTreeReader(readerType, context);
     if (reader instanceof StructTreeReader) {
       return new StructBatchReader(reader, context);
