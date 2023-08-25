@@ -25,8 +25,6 @@ import java.io.IOException;
 public class LatticeBatchWriter implements TreeWriter {
 
     final TreeWriter[] childrenWriters;
-    final int[] childrenOffsets;
-    final int[] childrenLengths;
 
     /**
      * Create the delegate and buffer writers and set the initial record position.
@@ -34,16 +32,10 @@ public class LatticeBatchWriter implements TreeWriter {
     public LatticeBatchWriter(TypeDescription schema,
                               WriterEncryptionVariant encryption,
                               WriterContext context) throws IOException {
-        // todo: passing first child is a hack
         childrenWriters = new TreeWriter[schema.getChildren().size()];
-
         for (int i = 0; i < childrenWriters.length; ++i) {
             childrenWriters[i] = Factory.create(schema.getChildren().get(i), encryption, context);
         }
-
-        // todo: this is hardcoded to write a single value.
-        childrenOffsets = new int[]{0, 0};
-        childrenLengths = new int[]{1, 1};
     }
 
     @Override
@@ -54,9 +46,12 @@ public class LatticeBatchWriter implements TreeWriter {
         //indexStatistics.increment(length);
         childrenWriters[0].writeRootBatch(batch, offset, length);
 
-        // todo: capture the offset and lengths we need to write into this stripe!
-        childrenWriters[1].writeBatch(latticeBatch.intBuffer, childrenOffsets[0], childrenLengths[0]);
-        childrenWriters[2].writeBatch(latticeBatch.textBuffer, childrenOffsets[1], childrenLengths[1]);
+        for (int i = 0; i + 1 < childrenWriters.length; i++) {
+            childrenWriters[i + 1].writeBatch(
+                    latticeBatch.buffers[i],
+                    0,
+                    latticeBatch.bufferSizes[i]);
+        }
     }
 
     @Override

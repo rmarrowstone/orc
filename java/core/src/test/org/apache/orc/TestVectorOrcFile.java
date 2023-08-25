@@ -3292,12 +3292,16 @@ public class TestVectorOrcFile {
       }
       ((LongColumnVector) outer.fields[0]).vector[r] = r;
     }
-    batch.intBuffer.noNulls = true;
-    batch.intBuffer.vector[0] = 32;
+    final LongColumnVector intBuffer = batch.getBufferAsType(0);
+    intBuffer.noNulls = true;
+    intBuffer.vector[0] = 32;
+    batch.bufferSizes[0] = 1;
 
-    batch.textBuffer.noNulls = true;
-    batch.textBuffer.initBuffer();
-    batch.textBuffer.setVal(0, "foo".getBytes(StandardCharsets.UTF_8));
+    final BytesColumnVector textBuffer = batch.getBufferAsType(1);
+    textBuffer.noNulls = true;
+    textBuffer.initBuffer();
+    textBuffer.setVal(0, "foo".getBytes(StandardCharsets.UTF_8));
+    batch.bufferSizes[1] = 1;
 
     writer.addRowBatch(batch);
     writer.close();
@@ -3319,8 +3323,10 @@ public class TestVectorOrcFile {
         assertEquals(r, vec.vector[r], "row " + r);
       }
     }
-    assertEquals(32, readBatch.intBuffer.vector[0]);
-    assertEquals("foo", new String(readBatch.textBuffer.vector[0]));
+    final LongColumnVector readIntBuffer = readBatch.getBufferAsType(0);
+    assertEquals(32, readIntBuffer.vector[0]);
+    final BytesColumnVector readTextBuffer = readBatch.getBufferAsType(1);
+    assertEquals("foo", new String(readTextBuffer.vector[0]));
 
     rows.nextBatch(readBatch);
     assertEquals(0, readBatch.size);

@@ -19,12 +19,7 @@
 package org.apache.orc.impl.reader;
 
 import com.google.protobuf.CodedInputStream;
-import org.apache.orc.DataReader;
-import org.apache.orc.EncryptionAlgorithm;
-import org.apache.orc.OrcFile;
-import org.apache.orc.OrcProto;
-import org.apache.orc.StripeInformation;
-import org.apache.orc.TypeDescription;
+import org.apache.orc.*;
 import org.apache.orc.impl.BufferChunk;
 import org.apache.orc.impl.BufferChunkList;
 import org.apache.orc.impl.CryptoUtils;
@@ -41,13 +36,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.security.Key;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * This class handles parsing the stripe information and handling the necessary
@@ -80,6 +69,7 @@ public class StripePlanner {
   private final List<StreamInformation> indexStreams = new ArrayList<>();
   // the data streams sorted by offset
   private final List<StreamInformation> dataStreams = new ArrayList<>();
+  private final List<StripeStatistics> stripeStatistics;
   private final OrcProto.Stream.Kind[] bloomFilterKinds;
   // does each column have a null stream?
   private final boolean[] hasNull;
@@ -102,7 +92,8 @@ public class StripePlanner {
                        OrcFile.WriterVersion version,
                        boolean ignoreNonUtf8BloomFilter,
                        long maxBufferSize,
-                       Set<Integer> filterColIds) {
+                       Set<Integer> filterColIds,
+                       List<StripeStatistics> stripeStatistics) {
     this.schema = schema;
     this.version = version;
     encodings = new OrcProto.ColumnEncoding[schema.getMaximumId()+1];
@@ -113,6 +104,7 @@ public class StripePlanner {
     hasNull = new boolean[schema.getMaximumId() + 1];
     this.maxBufferSize = maxBufferSize;
     this.filterColIds = filterColIds;
+    this.stripeStatistics = stripeStatistics;
   }
 
   public StripePlanner(TypeDescription schema,
@@ -122,12 +114,12 @@ public class StripePlanner {
                        boolean ignoreNonUtf8BloomFilter,
                        long maxBufferSize) {
     this(schema, encryption, dataReader, version, ignoreNonUtf8BloomFilter, maxBufferSize,
-         Collections.emptySet());
+         Collections.emptySet(), null);
   }
 
   public StripePlanner(StripePlanner old) {
     this(old.schema, old.encryption, old.dataReader, old.version,
-         old.ignoreNonUtf8BloomFilter, old.maxBufferSize, old.filterColIds);
+         old.ignoreNonUtf8BloomFilter, old.maxBufferSize, old.filterColIds, null);
   }
 
   /**
@@ -603,6 +595,10 @@ public class StripePlanner {
         }
       }
     }
+  }
+
+  public long getColumnLength(int colId) {
+    return stripeStatistics.get((int) currentStripeId).getColumnStatistics()[colId].getNumberOfValues();
   }
 
   public static class StreamInformation {

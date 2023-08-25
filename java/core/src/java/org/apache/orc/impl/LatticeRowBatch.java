@@ -1,15 +1,14 @@
 package org.apache.orc.impl;
 
 import org.apache.hadoop.hive.ql.exec.vector.BytesColumnVector;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 
-import java.util.TreeMap;
-
 public class LatticeRowBatch extends VectorizedRowBatch {
 
-    public LongColumnVector intBuffer;
-    public BytesColumnVector textBuffer;
+    public ColumnVector[] buffers;
+    public int[] bufferSizes;
 
     // this is a pretty big hack to track the portion of each buffer that needs to be
     // captured for each row. It's a huge hack because it's not clear how to fill this
@@ -21,15 +20,19 @@ public class LatticeRowBatch extends VectorizedRowBatch {
     // stripe?!? at least for the next two days.
     // private TreeMap<Integer, Integer[]> bufferPositionsByOffset = new TreeMap<>();
 
-    public LatticeRowBatch(int numCols, int bufferSize) {
+    public LatticeRowBatch(int numCols, ColumnVector[] buffers) {
         super(numCols);
-        intBuffer = new LongColumnVector();
-        textBuffer = new BytesColumnVector();
+        this.buffers = buffers;
+        this.bufferSizes = new int[buffers.length];
     }
 
-    public LatticeRowBatch(int numCols, int size, int bufferSize) {
+    public LatticeRowBatch(int numCols, int size, ColumnVector[] buffers) {
         super(numCols, size);
-        intBuffer = new LongColumnVector();
-        textBuffer = new BytesColumnVector();
+        this.buffers = buffers;
+        this.bufferSizes = new int[buffers.length];
+    }
+
+    public <T extends ColumnVector> T getBufferAsType(int index) {
+        return (T) buffers[index];
     }
 }

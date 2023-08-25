@@ -1,6 +1,9 @@
 package org.apache.orc.impl.reader.tree;
 
+import org.apache.commons.lang3.NotImplementedException;
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
+import org.apache.orc.ColumnStatistics;
 import org.apache.orc.TypeDescription;
 import org.apache.orc.impl.LatticeRowBatch;
 import org.apache.orc.impl.OrcFilterContextImpl;
@@ -9,6 +12,7 @@ import org.apache.orc.impl.TreeReaderFactory;
 import org.apache.orc.impl.reader.StripePlanner;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Reads the primary stripe data using the delegate rootReader.
@@ -19,14 +23,14 @@ public class LatticeBatchReader extends BatchReader {
     private final TreeReaderFactory.Context context;
     private final OrcFilterContextImpl filterContext;
     private final BatchReader dataReader;
-    private final TypeReader[] bufferReaders;
 
-    // todo: this is just a dummy, we need to determine the size based on something? or re-read as needed?
-    //       i don;t know right now.
-    private final static int bufferBatchSize = 256;
+    private final int[] bufferColIds;
+    private final TypeReader[] bufferReaders;
+    private final int[] bufferLengths;
 
     public LatticeBatchReader(BatchReader dataReader,
                               TypeReader[] bufferReaders,
+                              int[] bufferColIds,
                               TreeReaderFactory.Context context) {
         super(dataReader.rootType);
         this.context = context;
@@ -36,11 +40,34 @@ public class LatticeBatchReader extends BatchReader {
 
         this.dataReader = dataReader;
         this.bufferReaders = bufferReaders;
+        this.bufferColIds = bufferColIds;
+        this.bufferLengths = new int[bufferReaders.length];
+    }
+
+    public static LatticeBatchReader create(TypeDescription latticeDesc, TreeReaderFactory.Context context) throws IOException {
+        final List<TypeDescription> children = latticeDesc.getChildren();
+        final BatchReader rootReader = TreeReaderFactory.createRootReader(children.get(0), context);
+
+        final TypeReader[] bufferReaders = new TypeReader[children.size() - 1];
+        final int[] bufferColIds = new int[children.size() - 1];
+
+        int i = 0;
+        for (TypeDescription child : children.subList(1, children.size())) {
+            bufferReaders[i] = TreeReaderFactory.createTreeReader(child, context);
+            bufferColIds[i] = child.getId();
+            i++;
+        }
+
+        return new LatticeBatchReader(rootReader, bufferReaders, bufferColIds, context);
     }
 
     @Override
     public void startStripe(StripePlanner planner, TypeReader.ReadPhase readPhase) throws IOException {
         dataReader.startStripe(planner, readPhase);
+
+        for (int i = 0; i < bufferColIds.length; i++) {
+            bufferLengths[i] = (int) planner.getColumnLength(bufferColIds[i]);
+        }
 
         for (TypeReader bufferReader : bufferReaders) {
             bufferReader.startStripe(planner, readPhase);
@@ -53,15 +80,17 @@ public class LatticeBatchReader extends BatchReader {
 
         dataReader.nextBatch(latticeBatch, batchSize, readPhase);
 
-        latticeBatch.intBuffer.reset();
-        latticeBatch.intBuffer.ensureSize(1, false);
-        bufferReaders[0].nextVector(
-                latticeBatch.intBuffer, null, 1, batch, readPhase);
-
-        latticeBatch.textBuffer.reset();
-        latticeBatch.textBuffer.ensureSize(1, false);
-        bufferReaders[1].nextVector(
-                latticeBatch.textBuffer, null, 1, batch, readPhase);
+        for (int i = 0; i < bufferReaders.length; i++) {
+            final ColumnVector buffer = latticeBatch.buffers[i];
+            buffer.reset();
+            buffer.ensureSize(bufferLengths[i], false);
+            bufferReaders[i].nextVector(
+                    buffer,
+                    null,
+                    bufferLengths[i],
+                    batch,
+                    readPhase);
+        }
     }
 
     @Override

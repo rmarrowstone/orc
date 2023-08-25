@@ -28,30 +28,13 @@ import org.apache.hadoop.hive.ql.io.sarg.SearchArgument.TruthValue;
 import org.apache.hadoop.hive.ql.util.TimestampUtils;
 import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import org.apache.hadoop.io.Text;
-import org.apache.orc.BooleanColumnStatistics;
-import org.apache.orc.CollectionColumnStatistics;
-import org.apache.orc.ColumnStatistics;
-import org.apache.orc.CompressionCodec;
-import org.apache.orc.DataReader;
-import org.apache.orc.DateColumnStatistics;
-import org.apache.orc.DecimalColumnStatistics;
-import org.apache.orc.DoubleColumnStatistics;
-import org.apache.orc.IntegerColumnStatistics;
-import org.apache.orc.OrcConf;
-import org.apache.orc.OrcFile;
-import org.apache.orc.OrcFilterContext;
-import org.apache.orc.OrcProto;
-import org.apache.orc.Reader;
-import org.apache.orc.RecordReader;
-import org.apache.orc.StringColumnStatistics;
-import org.apache.orc.StripeInformation;
-import org.apache.orc.TimestampColumnStatistics;
-import org.apache.orc.TypeDescription;
+import org.apache.orc.*;
 import org.apache.orc.filter.BatchFilter;
 import org.apache.orc.impl.filter.FilterFactory;
 import org.apache.orc.impl.reader.ReaderEncryption;
 import org.apache.orc.impl.reader.StripePlanner;
 import org.apache.orc.impl.reader.tree.BatchReader;
+import org.apache.orc.impl.reader.tree.LatticeBatchReader;
 import org.apache.orc.impl.reader.tree.TypeReader;
 import org.apache.orc.util.BloomFilter;
 import org.apache.orc.util.BloomFilterIO;
@@ -88,6 +71,7 @@ public class RecordReaderImpl implements RecordReader {
   protected final Path path;
   private final long firstRow;
   private final List<StripeInformation> stripes = new ArrayList<>();
+  private List<StripeStatistics> stripeStats = new ArrayList<>();
   private OrcProto.StripeFooter stripeFooter;
   private final long totalRowCount;
   protected final TypeDescription schema;
@@ -360,9 +344,11 @@ public class RecordReaderImpl implements RecordReader {
         new OrcProto.Stream.Kind[columns],
         new OrcProto.BloomFilterIndex[columns]);
 
+    stripeStats = fileReader.getStripeStatistics();
+
     planner = new StripePlanner(evolution.getFileSchema(), encryption,
                                 dataReader, writerVersion, ignoreNonUtf8BloomFilter,
-                                maxDiskRangeChunkLimit, filterColIds);
+                                maxDiskRangeChunkLimit, filterColIds, stripeStats);
 
     try {
       advanceToNextRow(reader, 0L, true);
@@ -1424,6 +1410,7 @@ public class RecordReaderImpl implements RecordReader {
 
         batchSize = computeBatchSize(batch.getMaxSize());
         reader.setVectorColumnCount(batch.getDataColumnCount());
+
         reader.nextBatch(batch, batchSize, startReadPhase);
         if (startReadPhase == TypeReader.ReadPhase.LEADERS && batch.size > 0) {
           // At least 1 row has been selected and as a result we read the follow columns into the

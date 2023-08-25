@@ -18,6 +18,7 @@
 
 package org.apache.orc;
 
+import org.apache.hadoop.hive.ql.exec.vector.ColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.LongColumnVector;
 import org.apache.hadoop.hive.ql.exec.vector.VectorizedRowBatch;
 import org.apache.orc.impl.LatticeRowBatch;
@@ -520,13 +521,18 @@ public class TypeDescription
   public LatticeRowBatch createRowBatchWithLatticeBuffers(RowBatchVersion version, int size, int bufferDefaultSize) {
     LatticeRowBatch result;
     TypeDescription root = children.get(0);
+    ColumnVector[] buffers = new ColumnVector[children.size() - 1];
+    for (int i = 1; i < children.size(); i++) {
+      buffers[i - 1] = TypeUtils.createColumn(children.get(i), version, bufferDefaultSize);
+    }
+
     if (root.category == Category.STRUCT) {
-      result = new LatticeRowBatch(root.children.size(), size, bufferDefaultSize);
+      result = new LatticeRowBatch(root.children.size(), size, buffers);
       for(int i=0; i < result.cols.length; ++i) {
         result.cols[i] = TypeUtils.createColumn(root.children.get(i), version, size);
       }
     } else {
-      result = new LatticeRowBatch(1, size, bufferDefaultSize);
+      result = new LatticeRowBatch(1, size, buffers);
       result.cols[0] = TypeUtils.createColumn(root, version, size);
     }
     result.reset();

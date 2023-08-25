@@ -3056,12 +3056,8 @@ public class TreeReaderFactory {
   public static BatchReader createRootReader(TypeDescription readerType, Context context)
           throws IOException {
     if (readerType.getCategory() == TypeDescription.Category.DATAGRAM) {
-      return new LatticeBatchReader(
-              createRootReader(readerType.getChildren().get(0), context),
-              new TypeReader[]{
-                      createTreeReader(readerType.getChildren().get(1), context),
-                      createTreeReader(readerType.getChildren().get(2), context)
-              },
+      return LatticeBatchReader.create(
+              readerType,
               context);
     }
 
